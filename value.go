@@ -17,7 +17,7 @@ type Error struct {
 
 func (err Error) Error() string { return err.Cause }
 
-// Object property names and some strings are stored as Atoms (unique strings) to save memory and allow fast comparison. Atoms are represented as a 32 bit integer. Half of the atom range is reserved for immediate integer literals from 0 to 2^{31}-1.
+// Atom Object property names and some strings are stored as Atoms (unique strings) to save memory and allow fast comparison. Atoms are represented as a 32-bit integer. Half of the atom range is reserved for immediate integer literals from 0 to 2^{31}-1.
 type Atom struct {
 	ctx *Context
 	ref C.JSAtom
@@ -49,7 +49,7 @@ type propertyEnum struct {
 // String returns the atom string representation of the value.
 func (p propertyEnum) String() string { return p.atom.String() }
 
-// JSValue represents a Javascript value which can be a primitive type or an object. Reference counting is used, so it is important to explicitly duplicate (JS_DupValue(), increment the reference count) or free (JS_FreeValue(), decrement the reference count) JSValues.
+// Value represents a Javascript value which can be a primitive type or an object. Reference counting is used, so it is important to explicitly duplicate (JS_DupValue(), increment the reference count) or free (JS_FreeValue(), decrement the reference count) JSValues.
 type Value struct {
 	ctx *Context
 	ref C.JSValue
@@ -77,7 +77,7 @@ func (v Value) String() string {
 	return C.GoString(ptr)
 }
 
-// JSONString returns the JSON string representation of the value.
+// JSONStringify returns the JSON string representation of the value.
 func (v Value) JSONStringify() string {
 	ref := C.JS_JSONStringify(v.ctx.ref, v.ref, C.JS_NewNull(), C.JS_NewNull())
 	ptr := C.JS_ToCString(v.ctx.ref, ref)
@@ -234,17 +234,17 @@ func (v Value) GetIdx(idx int64) Value {
 // Call calls the function with the given arguments.
 func (v Value) Call(fname string, args ...Value) Value {
 	if !v.IsObject() {
-		return v.ctx.Error(errors.New("Object not a object"))
+		return v.ctx.Error(errors.New("object not a object"))
 	}
 
 	fn := v.Get(fname) // get the function by name
 	defer fn.Free()
 
 	if !fn.IsFunction() {
-		return v.ctx.Error(errors.New("Object not a function"))
+		return v.ctx.Error(errors.New("object not a function"))
 	}
 
-	cargs := []C.JSValue{}
+	cargs := make([]C.JSValue, 0)
 	for _, x := range args {
 		cargs = append(cargs, x.ref)
 	}
@@ -254,18 +254,18 @@ func (v Value) Call(fname string, args ...Value) Value {
 	return Value{ctx: v.ctx, ref: C.JS_Call(v.ctx.ref, fn.ref, v.ref, C.int(len(cargs)), &cargs[0])}
 }
 
-// Call Class Constructor
+// New Call Class Constructor
 func (v Value) New(args ...Value) Value {
 	return v.CallConstructor(args...)
 }
 
-// Call calls the constructor with the given arguments.
+// CallConstructor calls the constructor with the given arguments.
 func (v Value) CallConstructor(args ...Value) Value {
 	if !v.IsConstructor() {
-		return v.ctx.Error(errors.New("Object not a constructor"))
+		return v.ctx.Error(errors.New("object not a constructor"))
 	}
 
-	cargs := []C.JSValue{}
+	cargs := make([]C.JSValue, 0)
 	for _, x := range args {
 		cargs = append(cargs, x.ref)
 	}
@@ -302,7 +302,7 @@ func (v Value) propertyEnum() ([]propertyEnum, error) {
 	}
 	defer C.js_free(v.ctx.ref, unsafe.Pointer(ptr))
 
-	entries := unsafe.Slice(ptr, size) // Go 1.17 and later
+	entries := unsafe.Slice(ptr, int(size)) // Go 1.17 and later
 	names := make([]propertyEnum, len(entries))
 	for i := 0; i < len(names); i++ {
 		names[i].IsEnumerable = entries[i].is_enumerable == 1
@@ -386,3 +386,8 @@ func (v Value) IsPromise() bool {
 }
 
 func (v Value) IsConstructor() bool { return C.JS_IsConstructor(v.ctx.ref, v.ref) == 1 }
+
+// ToString a json string of value, it valid for any value
+func (v Value) ToString() string {
+	return v.JSONStringify()
+}
